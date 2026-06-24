@@ -9,6 +9,16 @@ const port = process.env.PORT || 3000;
 const commissionRate = 0.1;
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+const corsOrigins = [
+  process.env.CORS_ORIGIN,
+  process.env.FRONTEND_URL,
+  process.env.CLIENT_URL,
+  process.env.NODE_ENV !== "production" ? "http://localhost:5173" : "",
+]
+  .filter(Boolean)
+  .flatMap((origin) => origin.split(","))
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 if (!stripeSecretKey) {
   console.warn("Missing STRIPE_SECRET_KEY environment variable.");
@@ -18,7 +28,13 @@ const stripe = Stripe(stripeSecretKey || "sk_test_missing");
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    origin(origin, callback) {
+      if (!origin || corsOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error(`CORS origin not allowed: ${origin}`));
+    },
   })
 );
 app.use(express.json());
@@ -36,10 +52,14 @@ app.post("/create-checkout-session", async (req, res) => {
     const rentalAmount = Number(req.body.amount);
     const currency = process.env.STRIPE_CURRENCY || "mxn";
     const spaceName = req.body.spaceName || "Renta de espacio";
-    const successUrl =
-      process.env.CHECKOUT_SUCCESS_URL || "http://localhost:3000/pago-exitoso";
-    const cancelUrl =
-      process.env.CHECKOUT_CANCEL_URL || "http://localhost:3000/pago-cancelado";
+    const successUrl = getAllowedRedirectUrl(
+      req.body.successUrl,
+      process.env.CHECKOUT_SUCCESS_URL || "http://localhost:5173/pago-exitoso"
+    );
+    const cancelUrl = getAllowedRedirectUrl(
+      req.body.cancelUrl,
+      process.env.CHECKOUT_CANCEL_URL || "http://localhost:5173/pago-cancelado"
+    );
 
     if (!Number.isInteger(rentalAmount) || rentalAmount < 1000) {
       return res.status(400).json({
@@ -100,3 +120,21 @@ app.post("/create-checkout-session", async (req, res) => {
 app.listen(port, () => {
   console.log(`Servidor_Espacio listening on port ${port}`);
 });
+
+function getAllowedRedirectUrl(candidateUrl, fallbackUrl) {
+  if (!candidateUrl) {
+    return fallbackUrl;
+  }
+
+  try {
+    const url = new URL(candidateUrl);
+
+    if (corsOrigins.includes(url.origin)) {
+      return candidateUrl;
+    }
+  } catch (_error) {
+    return fallbackUrl;
+  }
+
+  return fallbackUrl;
+}
