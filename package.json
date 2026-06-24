@@ -1,0 +1,28 @@
+{
+  "name": "servidor_espacio",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HectorMafud/Servidor_Espacio.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/HectorMafud/Servidor_Espacio/issues"
+  },
+  "homepage": "https://github.com/HectorMafud/Servidor_Espacio#readme",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^5.2.1",
+    "stripe": "^17.5.0"
+  }
+}
