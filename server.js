@@ -18,7 +18,7 @@ const stripe = Stripe(stripeSecretKey || "sk_test_missing");
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "*",
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
   })
 );
 app.use(express.json());
