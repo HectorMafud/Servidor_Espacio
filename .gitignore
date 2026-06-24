@@ -1,0 +1,14 @@
+# Environment files with real secrets
+.env
+.env.*
+!.env.example
+keys.env
+
+# Dependencies and build output
+node_modules/
+dist/
+build/
+.next/
+
+# OS/editor files
+.DS_Store
