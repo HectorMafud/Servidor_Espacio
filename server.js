@@ -5,136 +5,121 @@ const cors = require("cors");
 const Stripe = require("stripe");
 
 const app = express();
-const port = process.env.PORT || 3000;
-const commissionRate = 0.1;
+const port = process.env.PORT || 4242;
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-const corsOrigins = [
-  process.env.CORS_ORIGIN,
+
+if (!stripeSecretKey) {
+  console.warn("Missing STRIPE_SECRET_KEY environment variable");
+}
+
+const stripe = new Stripe(stripeSecretKey || "missing_key");
+
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:5174",
   process.env.FRONTEND_URL,
-  process.env.CLIENT_URL,
-  process.env.NODE_ENV !== "production" ? "http://localhost:5173" : "",
 ]
   .filter(Boolean)
   .flatMap((origin) => origin.split(","))
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-if (!stripeSecretKey) {
-  console.warn("Missing STRIPE_SECRET_KEY environment variable.");
-}
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
 
-const stripe = Stripe(stripeSecretKey || "sk_test_missing");
+    callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type"],
+};
 
-app.use(
-  cors({
-    origin(origin, callback) {
-      if (!origin || corsOrigins.includes(origin)) {
-        return callback(null, true);
-      }
+app.use(cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
 
-      return callback(new Error(`CORS origin not allowed: ${origin}`));
-    },
-  })
-);
 app.use(express.json());
 
-app.get("/", (_req, res) => {
-  res.json({ ok: true, service: "Servidor_Espacio" });
+app.get("/health", (_req, res) => {
+  res.json({ ok: true });
 });
 
 app.post("/create-checkout-session", async (req, res) => {
   try {
+    const {
+      spaceId,
+      title,
+      amount,
+      unitAmount,
+      currency = "mxn",
+      hours,
+      date,
+      customerEmail,
+      userId,
+      successUrl,
+      cancelUrl,
+    } = req.body;
+
     if (!stripeSecretKey) {
-      return res.status(500).json({ error: "Stripe secret key is not configured." });
+      return res.status(500).json({ error: "STRIPE_SECRET_KEY is not configured." });
     }
 
-    const rentalAmount = Number(req.body.amount);
-    const currency = process.env.STRIPE_CURRENCY || "mxn";
-    const spaceName = req.body.spaceName || "Renta de espacio";
-    const successUrl = getAllowedRedirectUrl(
-      req.body.successUrl,
-      process.env.CHECKOUT_SUCCESS_URL || "http://localhost:5173/pago-exitoso"
-    );
-    const cancelUrl = getAllowedRedirectUrl(
-      req.body.cancelUrl,
-      process.env.CHECKOUT_CANCEL_URL || "http://localhost:5173/pago-cancelado"
-    );
-
-    if (!Number.isInteger(rentalAmount) || rentalAmount < 1000) {
+    if (!title || !amount || !successUrl || !cancelUrl) {
       return res.status(400).json({
-        error: "A valid amount in cents is required. Example: 150000 for $1,500.00 MXN.",
+        error: "Missing required fields: title, amount, successUrl, cancelUrl.",
       });
     }
 
-    const commissionAmount = Math.round(rentalAmount * commissionRate);
-    const totalAmount = rentalAmount + commissionAmount;
+    const finalAmount = Number(amount);
+
+    if (!Number.isFinite(finalAmount) || finalAmount < 50) {
+      return res.status(400).json({ error: "Invalid amount." });
+    }
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
-      payment_method_types: ["card"],
+      customer_email: customerEmail || undefined,
       line_items: [
         {
+          quantity: 1,
           price_data: {
             currency,
+            unit_amount: finalAmount,
             product_data: {
-              name: spaceName,
+              name: title,
+              metadata: {
+                spaceId: spaceId || "",
+                userId: userId || "",
+                hours: String(hours || ""),
+                date: date || "",
+                unitAmount: String(unitAmount || ""),
+              },
             },
-            unit_amount: rentalAmount,
           },
-          quantity: 1,
-        },
-        {
-          price_data: {
-            currency,
-            product_data: {
-              name: "Comision de servicio 10%",
-            },
-            unit_amount: commissionAmount,
-          },
-          quantity: 1,
         },
       ],
       metadata: {
-        rental_amount: String(rentalAmount),
-        commission_amount: String(commissionAmount),
-        total_amount: String(totalAmount),
-        commission_rate: "10%",
+        spaceId: spaceId || "",
+        userId: userId || "",
+        hours: String(hours || ""),
+        date: date || "",
       },
       success_url: successUrl,
       cancel_url: cancelUrl,
     });
 
-    res.json({
-      url: session.url,
-      rentalAmount,
-      commissionAmount,
-      totalAmount,
-    });
+    res.json({ url: session.url });
   } catch (error) {
     console.error("Stripe checkout error:", error);
-    res.status(500).json({ error: "Could not create checkout session." });
+    res.status(500).json({
+      error: error.message || "Could not create checkout session.",
+    });
   }
 });
 
 app.listen(port, () => {
-  console.log(`Servidor_Espacio listening on port ${port}`);
+  console.log(`Payments server listening on port ${port}`);
 });
-
-function getAllowedRedirectUrl(candidateUrl, fallbackUrl) {
-  if (!candidateUrl) {
-    return fallbackUrl;
-  }
-
-  try {
-    const url = new URL(candidateUrl);
-
-    if (corsOrigins.includes(url.origin)) {
-      return candidateUrl;
-    }
-  } catch (_error) {
-    return fallbackUrl;
-  }
-
-  return fallbackUrl;
-}
