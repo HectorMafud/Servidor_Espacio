@@ -47,7 +47,7 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
-app.post("/create-checkout-session", async (req, res) => {
+async function createCheckoutSession(req, res) {
   try {
     const {
       spaceId,
@@ -118,7 +118,10 @@ app.post("/create-checkout-session", async (req, res) => {
       error: error.message || "Could not create checkout session.",
     });
   }
-});
+}
+
+app.post("/create-checkout-session", createCheckoutSession);
+app.post("/api/create-checkout-session", createCheckoutSession);
 
 app.listen(port, () => {
   console.log(`Payments server listening on port ${port}`);
